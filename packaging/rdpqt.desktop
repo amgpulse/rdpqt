@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=rdpqt
+GenericName=Remote Desktop Client
+Comment=A modern Qt6 GUI client for FreeRDP (xfreerdp) on Linux
+Exec=rdpqt
+Icon=rdpqt
+Terminal=false
+Type=Application
+Categories=Network;RemoteAccess;
+Keywords=rdp;freerdp;remote;desktop;xfreerdp;
+StartupNotify=true

@@ -1,0 +1,219 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: rdpqt
+  BUILD_TYPE: Release
+
+jobs:
+# ═══════════════════════════════════════════════════════
+# JOB 1 ── Build .deb on Ubuntu
+# ═══════════════════════════════════════════════════════
+  build-deb:
+    name: "📦 Build .deb (Ubuntu 22.04)"
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: "⬇️ Checkout source"
+        uses: actions/checkout@v4
+
+      - name: "📥 Install Qt6 and build tools"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build \
+            qt6-base-dev libqt6widgets6 libqt6gui6 libqt6core6 \
+            dpkg-dev file
+
+      - name: "🔧 Configure with CMake"
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -G Ninja
+
+      - name: "🔨 Build"
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: "📦 Generate .deb package"
+        run: |
+          cd build
+          cpack -G DEB --config CPackConfig.cmake
+          ls -lh *.deb
+
+      - name: "📤 Upload .deb artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: build/*.deb
+          retention-days: 14
+
+# ═══════════════════════════════════════════════════════
+# JOB 2 ── Build .rpm inside Fedora container
+# ═══════════════════════════════════════════════════════
+  build-rpm:
+    name: "📦 Build .rpm (Fedora 39)"
+    runs-on: ubuntu-22.04
+    container:
+      image: fedora:39
+
+    steps:
+      - name: "⬇️ Checkout source"
+        uses: actions/checkout@v4
+
+      - name: "📥 Install Qt6 and build tools"
+        run: |
+          dnf install -y \
+            gcc-c++ cmake ninja-build \
+            qt6-qtbase-devel \
+            rpm-build file
+
+      - name: "🔧 Configure with CMake"
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -G Ninja
+
+      - name: "🔨 Build"
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: "📦 Generate .rpm package"
+        run: |
+          cd build
+          cpack -G RPM --config CPackConfig.cmake
+          ls -lh *.rpm
+
+      - name: "📤 Upload .rpm artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: build/*.rpm
+          retention-days: 14
+
+# ═══════════════════════════════════════════════════════
+# JOB 3 ── Build .AppImage (Universal Linux x86_64)
+# ═══════════════════════════════════════════════════════
+  build-appimage:
+    name: "📦 Build .AppImage (Universal Linux)"
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: "⬇️ Checkout source"
+        uses: actions/checkout@v4
+
+      - name: "📥 Install Qt6, build tools & AppImage deps"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build \
+            qt6-base-dev libqt6widgets6 libqt6gui6 libqt6core6 \
+            libglib2.0-dev libfuse2 wget file patchelf
+
+      - name: "📥 Download linuxdeploy & Qt plugin (extracted)"
+        run: |
+          wget -q -O linuxdeploy.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy.AppImage
+          ./linuxdeploy.AppImage --appimage-extract
+          mv squashfs-root ld-dir
+
+          wget -q -O linuxdeploy-qt.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-qt.AppImage
+          ./linuxdeploy-qt.AppImage --appimage-extract
+          mv squashfs-root ld-qt-dir
+          # Make Qt plugin accessible to linuxdeploy
+          cp ld-qt-dir/usr/bin/linuxdeploy-plugin-qt ld-dir/usr/bin/linuxdeploy-plugin-qt
+          chmod +x ld-dir/usr/bin/linuxdeploy-plugin-qt
+
+      - name: "🔧 Configure & Build"
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -G Ninja
+          cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: "📂 Install into AppDir"
+        run: |
+          DESTDIR=$(pwd)/AppDir cmake --install build
+
+      - name: "📦 Package as AppImage"
+        env:
+          QMAKE: /usr/lib/qt6/bin/qmake
+          OUTPUT: rdpqt-x86_64.AppImage
+        run: |
+          ./ld-dir/AppRun \
+            --appdir AppDir \
+            --plugin qt \
+            --desktop-file packaging/rdpqt.desktop \
+            --icon-file packaging/rdpqt.png \
+            --output appimage
+          ls -lh *.AppImage
+
+      - name: "📤 Upload AppImage artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-package
+          path: "*.AppImage"
+          retention-days: 14
+
+# ═══════════════════════════════════════════════════════
+# JOB 4 ── Publish GitHub Release (on v* tags only)
+# ═══════════════════════════════════════════════════════
+  release:
+    name: "🚀 Publish GitHub Release"
+    runs-on: ubuntu-22.04
+    needs: [ build-deb, build-rpm, build-appimage ]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: "⬇️ Checkout source"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "⬇️ Download all build artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: "📋 List release files"
+        run: find dist/ -type f | sort
+
+      - name: "📝 Generate release notes from git log"
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD" > release_notes.txt
+          else
+            git log --pretty=format:"- %s (%h)" > release_notes.txt
+          fi
+          echo "" >> release_notes.txt
+          echo "---" >> release_notes.txt
+          echo "**Full commit history**: ${{ github.server_url }}/${{ github.repository }}/commits/${{ github.ref_name }}" >> release_notes.txt
+          cat release_notes.txt
+
+      - name: "🚀 Create GitHub Release"
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "rdpqt ${{ github.ref_name }}"
+          body_path: release_notes.txt
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          files: |
+            dist/**/*.deb
+            dist/**/*.rpm
+            dist/**/*.AppImage
+          token: ${{ secrets.GITHUB_TOKEN }}
