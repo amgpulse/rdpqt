@@ -188,14 +188,15 @@ jobs:
             --no-appstream \
             AppDir \
             "rdpqt-x86_64.AppImage"
-          test "$(find . -maxdepth 1 -type f -name '*.AppImage' | wc -l)" -eq 1
-          ls -lh *.AppImage
+          test -s rdpqt-x86_64.AppImage
+          test -x rdpqt-x86_64.AppImage
+          ls -lh rdpqt-x86_64.AppImage
 
       - name: "📤 Upload artifact"
         uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: "*.AppImage"
+          path: rdpqt-x86_64.AppImage
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 4: Create GitHub Release (tags only)
