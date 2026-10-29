@@ -188,7 +188,7 @@ void MainWindow::setupUi()
     );
 
     m_disconnectBtn = new QPushButton(tr("Disconnect"), centralWidget);
-    m_disconnectBtn->setEnabled(false);
+    m_disconnectBtn->setVisible(false);
     m_disconnectBtn->setStyleSheet(
         "QPushButton { background-color: #c62828; color: white; font-weight: bold; padding: 7px 20px; border-radius: 4px; }"
         "QPushButton:hover { background-color: #d32f2f; }"
@@ -341,7 +341,9 @@ void MainWindow::onLogOutput(const QString &message, bool isError)
 
 void MainWindow::onStateChanged(bool running)
 {
+    m_connectBtn->setVisible(!running);
     m_connectBtn->setEnabled(!running);
+    m_disconnectBtn->setVisible(running);
     m_disconnectBtn->setEnabled(running);
 
     m_hostEdit->setEnabled(!running);
