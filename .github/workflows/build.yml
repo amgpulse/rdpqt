@@ -15,20 +15,12 @@ env:
   BUILD_TYPE: Release
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JOB 1: Build .deb packages (Ubuntu matrix)
+# JOB 1: Build one .deb package
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
   build-deb:
-    name: "📦 .deb — ${{ matrix.os }}"
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            label: ubuntu22
-          - os: ubuntu-24.04
-            label: ubuntu24
+    name: "📦 .deb"
+    runs-on: ubuntu-22.04
 
     steps:
       - name: "⬇️ Checkout"
@@ -56,34 +48,23 @@ jobs:
         run: |
           cd build
           cpack -G DEB
-          # Rename to include OS label
-          for f in *.deb; do
-            mv "$f" "${f%.deb}-${{ matrix.label }}.deb"
-          done
+          test "$(find . -maxdepth 1 -type f -name '*.deb' | wc -l)" -eq 1
           ls -lh *.deb
 
       - name: "📤 Upload artifact"
         uses: actions/upload-artifact@v4
         with:
-          name: deb-${{ matrix.label }}
+          name: deb
           path: build/*.deb
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JOB 2: Build .rpm packages (Fedora matrix via container)
+# JOB 2: Build one .rpm package (Fedora container)
 # ─────────────────────────────────────────────────────────────────────────────
   build-rpm:
-    name: "📦 .rpm — Fedora ${{ matrix.fedora }}"
+    name: "📦 .rpm"
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - fedora: "39"
-            image: fedora:39
-          - fedora: "40"
-            image: fedora:40
     container:
-      image: ${{ matrix.image }}
+      image: fedora:44
 
     steps:
       - name: "📥 Install git & tools (Fedora needs them)"
@@ -110,15 +91,13 @@ jobs:
         run: |
           cd build
           cpack -G RPM
-          for f in *.rpm; do
-            mv "$f" "${f%.rpm}-fedora${{ matrix.fedora }}.rpm"
-          done
+          test "$(find . -maxdepth 1 -type f -name '*.rpm' | wc -l)" -eq 1
           ls -lh *.rpm
 
       - name: "📤 Upload artifact"
         uses: actions/upload-artifact@v4
         with:
-          name: rpm-fedora${{ matrix.fedora }}
+          name: rpm
           path: build/*.rpm
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,6 +186,7 @@ jobs:
             --no-appstream \
             AppDir \
             "rdpqt-x86_64.AppImage"
+          test "$(find . -maxdepth 1 -type f -name '*.AppImage' | wc -l)" -eq 1
           ls -lh *.AppImage
 
       - name: "📤 Upload artifact"
@@ -253,10 +233,10 @@ jobs:
             echo ""
             echo "---"
             echo "### 📥 Download"
-            echo "| Package | Distro |"
-            echo "|---------|--------|"
-            echo "| \`.deb\` | Ubuntu 22.04, Ubuntu 24.04 |"
-            echo "| \`.rpm\` | Fedora 39, Fedora 40 |"
+            echo "| Package | Build target |"
+            echo "|---------|--------------|"
+            echo "| \`.deb\` | Ubuntu 22.04 |"
+            echo "| \`.rpm\` | Fedora 44 |"
             echo "| \`.AppImage\` | Any Linux x86_64 |"
           } > release_notes.md
           cat release_notes.md
