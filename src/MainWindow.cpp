@@ -58,6 +58,17 @@ void MainWindow::setupUi()
     mainLayout->setSpacing(12);
     mainLayout->setContentsMargins(16, 16, 16, 16);
 
+    auto *themeLayout = new QHBoxLayout();
+    themeLayout->addStretch();
+    m_darkModeCheck = new QCheckBox(tr("Dark mode"), centralWidget);
+    themeLayout->addWidget(m_darkModeCheck);
+    mainLayout->addLayout(themeLayout);
+    connect(m_darkModeCheck, &QCheckBox::toggled, this, [this](bool enabled) {
+        applyTheme();
+        QSettings settings("FreeRDPClient", "RdpQt");
+        settings.setValue("darkMode", enabled);
+    });
+
     // ==========================================
     // 1. Connection Details Group
     // ==========================================
@@ -178,7 +189,6 @@ void MainWindow::setupUi()
     auto *actionLayout = new QHBoxLayout();
 
     m_statusLabel = new QLabel(tr("Status: Ready to connect"), centralWidget);
-    m_statusLabel->setStyleSheet("font-weight: bold; color: #555;");
 
     m_connectBtn = new QPushButton(tr("Connect"), centralWidget);
     m_connectBtn->setStyleSheet(
@@ -214,7 +224,6 @@ void MainWindow::setupUi()
     m_logViewer = new QTextEdit(logGroup);
     m_logViewer->setReadOnly(true);
     m_logViewer->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    m_logViewer->setStyleSheet("QTextEdit { background-color: #1e1e1e; color: #d4d4d4; font-size: 12px; }");
 
     auto *logButtonLayout = new QHBoxLayout();
     m_clearLogBtn = new QPushButton(tr("Clear Log"), logGroup);
@@ -226,6 +235,7 @@ void MainWindow::setupUi()
     logLayout->addLayout(logButtonLayout);
 
     mainLayout->addWidget(logGroup, 1);
+    applyTheme();
 }
 
 void MainWindow::togglePasswordVisibility()
@@ -298,36 +308,87 @@ void MainWindow::onConnectClicked()
 
     saveSettings();
 
-    m_statusLabel->setText(tr("Status: Starting xfreerdp..."));
-    m_statusLabel->setStyleSheet("font-weight: bold; color: #1976d2;");
+    setStatus(tr("Status: Starting xfreerdp..."), StatusTone::Info);
     m_rdpManager->startSession(cfg);
 }
 
 void MainWindow::onDisconnectClicked()
 {
-    m_statusLabel->setText(tr("Status: Disconnecting..."));
-    m_statusLabel->setStyleSheet("font-weight: bold; color: #e65100;");
+    setStatus(tr("Status: Disconnecting..."), StatusTone::Warning);
     m_rdpManager->stopSession();
 }
 
 void MainWindow::onSessionStarted()
 {
-    m_statusLabel->setText(tr("Status: Connected / Running"));
-    m_statusLabel->setStyleSheet("font-weight: bold; color: #2e7d32;");
+    setStatus(tr("Status: Connected / Running"), StatusTone::Success);
 }
 
 void MainWindow::onSessionFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
     Q_UNUSED(exitStatus);
-    m_statusLabel->setText(QString(tr("Status: Disconnected (Exit code: %1)")).arg(exitCode));
-    m_statusLabel->setStyleSheet("font-weight: bold; color: #555;");
+    setStatus(QString(tr("Status: Disconnected (Exit code: %1)")).arg(exitCode), StatusTone::Neutral);
 }
 
 void MainWindow::onErrorOccurred(const QString &errorMessage)
 {
     QMessageBox::critical(this, tr("RDP Error"), errorMessage);
-    m_statusLabel->setText(tr("Status: Error"));
-    m_statusLabel->setStyleSheet("font-weight: bold; color: #c62828;");
+    setStatus(tr("Status: Error"), StatusTone::Error);
+}
+
+void MainWindow::applyTheme()
+{
+    const bool dark = m_darkModeCheck->isChecked();
+    const QString background = dark ? "#1e1e1e" : "#f5f5f5";
+    const QString surface = dark ? "#252526" : "#ffffff";
+    const QString foreground = dark ? "#e6e6e6" : "#202124";
+    const QString border = dark ? "#484848" : "#c8c8c8";
+    const QString input = dark ? "#303030" : "#ffffff";
+    const QString selection = dark ? "#264f78" : "#cce4ff";
+
+    setStyleSheet(QString(
+        "QMainWindow, QWidget { background-color: %1; color: %2; }"
+        "QGroupBox { background-color: %3; border: 1px solid %4; border-radius: 5px; margin-top: 8px; padding-top: 8px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }"
+        "QLineEdit, QSpinBox, QComboBox, QTextEdit { background-color: %5; color: %2; border: 1px solid %4; border-radius: 3px; padding: 4px; selection-background-color: %6; }"
+        "QComboBox QAbstractItemView { background-color: %5; color: %2; selection-background-color: %6; }"
+        "QCheckBox { background-color: transparent; }"
+        "QPushButton { background-color: %3; color: %2; border: 1px solid %4; border-radius: 4px; padding: 5px 10px; }"
+        "QPushButton:hover { background-color: %6; }"
+        "QPushButton:disabled { color: %4; }"
+    ).arg(background, foreground, surface, border, input, selection));
+
+    const QString logBackground = dark ? "#1e1e1e" : "#ffffff";
+    const QString logForeground = dark ? "#d4d4d4" : "#202124";
+    m_logViewer->setStyleSheet(QString(
+        "QTextEdit { background-color: %1; color: %2; font-size: 12px; }"
+    ).arg(logBackground, logForeground));
+
+    QString statusColor;
+    switch (m_statusTone) {
+    case StatusTone::Info:
+        statusColor = dark ? "#64b5f6" : "#1976d2";
+        break;
+    case StatusTone::Warning:
+        statusColor = dark ? "#ffb74d" : "#e65100";
+        break;
+    case StatusTone::Success:
+        statusColor = dark ? "#81c784" : "#2e7d32";
+        break;
+    case StatusTone::Error:
+        statusColor = dark ? "#ef5350" : "#c62828";
+        break;
+    case StatusTone::Neutral:
+        statusColor = dark ? "#bdbdbd" : "#555555";
+        break;
+    }
+    m_statusLabel->setStyleSheet(QString("font-weight: bold; color: %1;").arg(statusColor));
+}
+
+void MainWindow::setStatus(const QString &text, StatusTone tone)
+{
+    m_statusTone = tone;
+    m_statusLabel->setText(text);
+    applyTheme();
 }
 
 void MainWindow::onLogOutput(const QString &message, bool isError)
@@ -386,6 +447,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 void MainWindow::loadSettings()
 {
     QSettings settings("FreeRDPClient", "RdpQt");
+    m_darkModeCheck->setChecked(settings.value("darkMode", false).toBool());
     m_hostEdit->setText(settings.value("host", "").toString());
     m_portSpinBox->setValue(settings.value("port", 3389).toInt());
     m_usernameEdit->setText(settings.value("username", "").toString());
@@ -412,6 +474,7 @@ void MainWindow::saveSettings()
 {
     QSettings settings("FreeRDPClient", "RdpQt");
     settings.setValue("host", m_hostEdit->text().trimmed());
+    settings.setValue("darkMode", m_darkModeCheck->isChecked());
     settings.setValue("port", m_portSpinBox->value());
     settings.setValue("username", m_usernameEdit->text().trimmed());
     settings.setValue("domain", m_domainEdit->text().trimmed());

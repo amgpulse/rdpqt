@@ -35,7 +35,8 @@
 - 📁 **Local Folder Redirection**: Share local directories as virtual drives (`/drive:<name>,<path>`) using an integrated folder picker.
 - 🛡️ **Self-Signed Certificate Bypass**: Quick toggle for `/cert:ignore` when working with internal servers and self-signed certificates.
 - 💾 **Persistent Session Settings**: Automatically restores your last configured host, port, username, domain, and display settings across restarts via `QSettings`.
-- 📊 **Real-time Log Terminal**: Built-in dark monospace console viewer displaying connection events and live session state.
+- 📊 **Real-time Log Terminal**: Built-in theme-aware monospace console viewer displaying connection events and live session state.
+- 🌓 **Light & Dark Themes**: Switch between light and dark mode; the selected theme is remembered between launches.
 
 ---
 

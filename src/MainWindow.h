@@ -35,12 +35,23 @@ private slots:
     void togglePasswordVisibility();
 
 private:
+    enum class StatusTone {
+        Neutral,
+        Info,
+        Warning,
+        Success,
+        Error
+    };
+
     void setupUi();
+    void applyTheme();
+    void setStatus(const QString &text, StatusTone tone);
     void loadSettings();
     void saveSettings();
     RdpConfig buildConfigFromUi() const;
 
     // UI Widgets
+    QCheckBox   *m_darkModeCheck;
     QLineEdit   *m_hostEdit;
     QSpinBox    *m_portSpinBox;
     QLineEdit   *m_usernameEdit;
@@ -58,6 +69,7 @@ private:
     QLabel      *m_statusLabel;
     QTextEdit   *m_logViewer;
     QPushButton *m_clearLogBtn;
+    StatusTone   m_statusTone = StatusTone::Neutral;
 
     // Process manager
     RdpManager  *m_rdpManager;
