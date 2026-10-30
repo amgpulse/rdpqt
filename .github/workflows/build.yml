@@ -37,10 +37,15 @@ jobs:
 
       - name: "🔧 CMake configure"
         run: |
+          VERSION_ARGS=()
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION_ARGS+=("-DRDPQT_VERSION=${GITHUB_REF_NAME#v}")
+          fi
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -G Ninja
+            -G Ninja \
+            "${VERSION_ARGS[@]}"
 
       - name: "🔨 Build"
         run: cmake --build build --parallel
@@ -80,10 +85,15 @@ jobs:
 
       - name: "🔧 CMake configure"
         run: |
+          VERSION_ARGS=()
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION_ARGS+=("-DRDPQT_VERSION=${GITHUB_REF_NAME#v}")
+          fi
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -G Ninja
+            -G Ninja \
+            "${VERSION_ARGS[@]}"
 
       - name: "🔨 Build"
         run: cmake --build build --parallel
@@ -153,10 +163,15 @@ jobs:
 
       - name: "🔧 CMake configure & Build"
         run: |
+          VERSION_ARGS=()
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION_ARGS+=("-DRDPQT_VERSION=${GITHUB_REF_NAME#v}")
+          fi
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -G Ninja
+            -G Ninja \
+            "${VERSION_ARGS[@]}"
           cmake --build build --parallel
 
       - name: "📂 Install into AppDir"
@@ -184,19 +199,22 @@ jobs:
         env:
           ARCH: x86_64
         run: |
+          APP_VERSION="$(cmake -LA -N build | sed -n 's/^RDPQT_VERSION:STRING=//p')"
+          test -n "$APP_VERSION"
+          APPIMAGE_NAME="rdpqt-${APP_VERSION}-x86_64.AppImage"
           appimagetool-extracted/AppRun \
             --no-appstream \
             AppDir \
-            "rdpqt-x86_64.AppImage"
-          test -s rdpqt-x86_64.AppImage
-          test -x rdpqt-x86_64.AppImage
-          ls -lh rdpqt-x86_64.AppImage
+            "$APPIMAGE_NAME"
+          test -s "$APPIMAGE_NAME"
+          test -x "$APPIMAGE_NAME"
+          ls -lh "$APPIMAGE_NAME"
 
       - name: "📤 Upload artifact"
         uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: rdpqt-x86_64.AppImage
+          path: rdpqt-*.AppImage
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 4: Create GitHub Release (tags only)
