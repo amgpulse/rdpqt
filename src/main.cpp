@@ -11,6 +11,7 @@ int main(int argc, char *argv[])
     app.setApplicationDisplayName("rdpqt");
     app.setOrganizationName("FreeRDPClient");
     app.setApplicationVersion("1.0.0");
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/app-icon")));
 
     // Use Fusion style for a clean, consistent cross-desktop look on Linux
     if (QStyleFactory::keys().contains("Fusion", Qt::CaseInsensitive)) {

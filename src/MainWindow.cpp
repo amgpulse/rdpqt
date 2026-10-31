@@ -19,12 +19,16 @@
 #include <QStyle>
 #include <QFontDatabase>
 #include <QDateTime>
+#include <QSystemTrayIcon>
+#include <QMenu>
+#include <QEvent>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       m_rdpManager(new RdpManager(this))
 {
     setupUi();
+    setupTrayIcon();
     loadSettings();
 
     // Connect RdpManager signals
@@ -247,6 +251,89 @@ void MainWindow::togglePasswordVisibility()
     }
 }
 
+void MainWindow::setupTrayIcon()
+{
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        return;
+    }
+
+    m_trayMenu = new QMenu(this);
+    m_trayStatusAction = new QAction(tr("Connection: Disconnected"), this);
+    m_trayStatusAction->setEnabled(false);
+    m_trayToggleAction = new QAction(tr("Show / Restore"), this);
+    m_trayQuitAction = new QAction(tr("Quit"), this);
+
+    connect(m_trayToggleAction, &QAction::triggered, this, &MainWindow::toggleWindowVisibility);
+    connect(m_trayQuitAction, &QAction::triggered, this, [this]() {
+        if (m_rdpManager->isRunning()) {
+            const QMessageBox::StandardButton reply = QMessageBox::question(
+                this,
+                tr("Active Session"),
+                tr("An active FreeRDP session is running. Quit rdpqt and stop the session?"),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No
+            );
+
+            if (reply != QMessageBox::Yes) {
+                return;
+            }
+
+            m_rdpManager->stopSession();
+        }
+
+        saveSettings();
+        qApp->quit();
+    });
+
+    m_trayMenu->addAction(m_trayStatusAction);
+    m_trayMenu->addSeparator();
+    m_trayMenu->addAction(m_trayToggleAction);
+    m_trayMenu->addSeparator();
+    m_trayMenu->addAction(m_trayQuitAction);
+
+    m_trayIcon = new QSystemTrayIcon(this);
+    m_trayIcon->setContextMenu(m_trayMenu);
+    m_trayIcon->setToolTip(tr("rdpqt"));
+    m_trayIcon->setIcon(QIcon(QStringLiteral(":/icons/app-icon")));
+
+    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            toggleWindowVisibility();
+        }
+    });
+
+    m_trayIcon->show();
+    m_trayToggleAction->setText(tr("Show / Restore"));
+    updateTrayStatus(tr("Disconnected"));
+}
+
+void MainWindow::toggleWindowVisibility()
+{
+    if (m_trayIcon == nullptr) {
+        return;
+    }
+
+    if (isVisible()) {
+        hide();
+        m_trayToggleAction->setText(tr("Show / Restore"));
+    } else {
+        show();
+        raise();
+        activateWindow();
+        m_trayToggleAction->setText(tr("Hide to tray"));
+    }
+}
+
+void MainWindow::updateTrayStatus(const QString &status)
+{
+    if (m_trayIcon == nullptr || m_trayStatusAction == nullptr) {
+        return;
+    }
+
+    m_trayStatusAction->setText(tr("Connection: %1").arg(status));
+    m_trayIcon->setToolTip(tr("rdpqt - %1").arg(status));
+}
+
 void MainWindow::onSharedDriveToggled(bool checked)
 {
     m_sharedDrivePathEdit->setEnabled(checked);
@@ -309,6 +396,7 @@ void MainWindow::onConnectClicked()
     saveSettings();
 
     setStatus(tr("Status: Starting xfreerdp..."), StatusTone::Info);
+    updateTrayStatus(tr("Connecting"));
     m_rdpManager->startSession(cfg);
 }
 
@@ -321,18 +409,21 @@ void MainWindow::onDisconnectClicked()
 void MainWindow::onSessionStarted()
 {
     setStatus(tr("Status: Connected / Running"), StatusTone::Success);
+    updateTrayStatus(tr("Connected"));
 }
 
 void MainWindow::onSessionFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
     Q_UNUSED(exitStatus);
     setStatus(QString(tr("Status: Disconnected (Exit code: %1)")).arg(exitCode), StatusTone::Neutral);
+    updateTrayStatus(tr("Disconnected"));
 }
 
 void MainWindow::onErrorOccurred(const QString &errorMessage)
 {
     QMessageBox::critical(this, tr("RDP Error"), errorMessage);
     setStatus(tr("Status: Error"), StatusTone::Error);
+    updateTrayStatus(tr("Disconnected"));
 }
 
 void MainWindow::applyTheme()
@@ -420,8 +511,28 @@ void MainWindow::onStateChanged(bool running)
     m_browseDriveBtn->setEnabled(!running && m_sharedDriveCheck->isChecked());
 }
 
+void MainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::WindowStateChange && m_trayIcon != nullptr) {
+        const auto state = windowState();
+        if ((state & Qt::WindowMinimized) && isVisible()) {
+            hide();
+            event->ignore();
+            return;
+        }
+    }
+
+    QMainWindow::changeEvent(event);
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (m_trayIcon != nullptr && m_trayIcon->isVisible()) {
+        hide();
+        event->ignore();
+        return;
+    }
+
     if (m_rdpManager->isRunning()) {
         const QMessageBox::StandardButton reply = QMessageBox::question(
             this,

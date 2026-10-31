@@ -21,6 +21,7 @@ set(SOURCES
     src/MainWindow.cpp
     src/RdpManager.h
     src/RdpManager.cpp
+    src/icons.qrc
 )
 
 add_executable(rdpqt ${SOURCES})

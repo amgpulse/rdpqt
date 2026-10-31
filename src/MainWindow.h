@@ -11,6 +11,9 @@ class QCheckBox;
 class QPushButton;
 class QTextEdit;
 class QLabel;
+class QSystemTrayIcon;
+class QMenu;
+class QAction;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -21,6 +24,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private slots:
     void onConnectClicked();
@@ -44,11 +48,14 @@ private:
     };
 
     void setupUi();
+    void setupTrayIcon();
     void applyTheme();
     void setStatus(const QString &text, StatusTone tone);
     void loadSettings();
     void saveSettings();
     RdpConfig buildConfigFromUi() const;
+    void toggleWindowVisibility();
+    void updateTrayStatus(const QString &status);
 
     // UI Widgets
     QCheckBox   *m_darkModeCheck;
@@ -73,4 +80,11 @@ private:
 
     // Process manager
     RdpManager  *m_rdpManager;
+
+    // Tray icon
+    QSystemTrayIcon *m_trayIcon = nullptr;
+    QMenu *m_trayMenu = nullptr;
+    QAction *m_trayStatusAction = nullptr;
+    QAction *m_trayToggleAction = nullptr;
+    QAction *m_trayQuitAction = nullptr;
 };
