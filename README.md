@@ -84,7 +84,7 @@ sudo pacman -S base-devel cmake qt6-base freerdp
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/<your-username>/rdpqt.git
+git clone https://github.com/amgpulse/rdpqt.git
 cd rdpqt
 
 # 2. Generate build tree
