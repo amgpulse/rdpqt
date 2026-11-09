@@ -2,6 +2,10 @@
 #include <QStyleFactory>
 #include "MainWindow.h"
 
+#ifndef RDPQT_VERSION_STRING
+#define RDPQT_VERSION_STRING "1.4.0"
+#endif
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -10,7 +14,7 @@ int main(int argc, char *argv[])
     app.setApplicationName("rdpqt");
     app.setApplicationDisplayName("rdpqt");
     app.setOrganizationName("FreeRDPClient");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion(QStringLiteral(RDPQT_VERSION_STRING));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/app-icon")));
 
     // Use Fusion style for a clean, consistent cross-desktop look on Linux

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-set(RDPQT_VERSION "1.0.0" CACHE STRING "Application version")
+set(RDPQT_VERSION "1.4.0" CACHE STRING "Application version")
 project(RdpQt VERSION ${RDPQT_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -25,6 +25,10 @@ set(SOURCES
 )
 
 add_executable(rdpqt ${SOURCES})
+
+target_compile_definitions(rdpqt PRIVATE
+    RDPQT_VERSION_STRING="${RDPQT_VERSION}"
+)
 
 target_link_libraries(rdpqt PRIVATE
     Qt6::Core
