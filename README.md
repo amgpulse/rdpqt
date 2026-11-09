@@ -34,7 +34,8 @@
 - 📋 **Seamless Clipboard Sharing**: Toggle bidirectional clipboard synchronization (`+clipboard` / `-clipboard`).
 - 📁 **Local Folder Redirection**: Share local directories as virtual drives (`/drive:<name>,<path>`) using an integrated folder picker.
 - 🛡️ **Self-Signed Certificate Bypass**: Quick toggle for `/cert:ignore` when working with internal servers and self-signed certificates.
-- 💾 **Persistent Session Settings**: Automatically restores your last configured host, port, username, domain, and display settings across restarts via `QSettings`.
+- 📑 **Connection Profiles & Bookmarks**: Save, manage, and switch between multiple remote connection profiles with one click (supports New, Save, Rename, and Delete).
+- 💾 **Persistent Session Settings**: Automatically restores your configured profiles, active selection, credentials, and display settings across restarts via `QSettings`.
 - 🧊 **Tray Support**: Minimize to tray or close to tray, then restore the app from the system notification area.
 - 📊 **Real-time Log Terminal**: Built-in theme-aware monospace console viewer displaying connection events and live session state.
 - 🌓 **Light & Dark Themes**: Switch between light and dark mode; the selected theme is remembered between launches.

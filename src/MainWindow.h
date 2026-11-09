@@ -27,6 +27,12 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private slots:
+    void onProfileIndexChanged(int index);
+    void onNewProfileClicked();
+    void onSaveProfileClicked();
+    void onRenameProfileClicked();
+    void onDeleteProfileClicked();
+
     void onConnectClicked();
     void onDisconnectClicked();
     void onBrowseSharedDrive();
@@ -51,11 +57,24 @@ private:
     void setupTrayIcon();
     void applyTheme();
     void setStatus(const QString &text, StatusTone tone);
+    void updateProfileList(const QString &selectedProfile = QString());
+    void loadProfile(const QString &name);
+    void saveProfile(const QString &name);
+    void deleteProfile(const QString &name);
     void loadSettings();
     void saveSettings();
     RdpConfig buildConfigFromUi() const;
     void toggleWindowVisibility();
     void updateTrayStatus(const QString &status);
+
+    // Profile Widgets
+    QComboBox   *m_profileCombo = nullptr;
+    QPushButton *m_newProfileBtn = nullptr;
+    QPushButton *m_saveProfileBtn = nullptr;
+    QPushButton *m_renameProfileBtn = nullptr;
+    QPushButton *m_deleteProfileBtn = nullptr;
+    QString      m_currentProfileName;
+    bool         m_isUpdatingProfileList = false;
 
     // UI Widgets
     QCheckBox   *m_darkModeCheck;

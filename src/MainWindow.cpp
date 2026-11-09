@@ -13,6 +13,7 @@
 #include <QTextEdit>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QInputDialog>
 #include <QSettings>
 #include <QCloseEvent>
 #include <QAction>
@@ -22,6 +23,7 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QEvent>
+#include <QMap>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -62,16 +64,60 @@ void MainWindow::setupUi()
     mainLayout->setSpacing(12);
     mainLayout->setContentsMargins(16, 16, 16, 16);
 
-    auto *themeLayout = new QHBoxLayout();
-    themeLayout->addStretch();
+    // ==========================================
+    // Profile / Bookmarks & Theme Bar
+    // ==========================================
+    auto *profileLayout = new QHBoxLayout();
+    profileLayout->setSpacing(8);
+
+    auto *profileLabel = new QLabel(tr("Profile:"), centralWidget);
+    profileLabel->setStyleSheet("font-weight: bold;");
+
+    m_profileCombo = new QComboBox(centralWidget);
+    m_profileCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_profileCombo->setToolTip(tr("Select saved connection profile"));
+
+    m_newProfileBtn = new QPushButton(tr("New"), centralWidget);
+    m_newProfileBtn->setToolTip(tr("Create a new connection profile"));
+
+    m_saveProfileBtn = new QPushButton(tr("Save"), centralWidget);
+    m_saveProfileBtn->setToolTip(tr("Save current settings to selected profile"));
+
+    m_renameProfileBtn = new QPushButton(tr("Rename"), centralWidget);
+    m_renameProfileBtn->setToolTip(tr("Rename selected profile"));
+
+    m_deleteProfileBtn = new QPushButton(tr("Delete"), centralWidget);
+    m_deleteProfileBtn->setToolTip(tr("Delete selected profile"));
+
     m_darkModeCheck = new QCheckBox(tr("Dark mode"), centralWidget);
-    themeLayout->addWidget(m_darkModeCheck);
-    mainLayout->addLayout(themeLayout);
+
+    connect(m_profileCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onProfileIndexChanged);
+    connect(m_newProfileBtn, &QPushButton::clicked,
+            this, &MainWindow::onNewProfileClicked);
+    connect(m_saveProfileBtn, &QPushButton::clicked,
+            this, &MainWindow::onSaveProfileClicked);
+    connect(m_renameProfileBtn, &QPushButton::clicked,
+            this, &MainWindow::onRenameProfileClicked);
+    connect(m_deleteProfileBtn, &QPushButton::clicked,
+            this, &MainWindow::onDeleteProfileClicked);
+
     connect(m_darkModeCheck, &QCheckBox::toggled, this, [this](bool enabled) {
         applyTheme();
         QSettings settings("FreeRDPClient", "RdpQt");
         settings.setValue("darkMode", enabled);
     });
+
+    profileLayout->addWidget(profileLabel);
+    profileLayout->addWidget(m_profileCombo, 1);
+    profileLayout->addWidget(m_newProfileBtn);
+    profileLayout->addWidget(m_saveProfileBtn);
+    profileLayout->addWidget(m_renameProfileBtn);
+    profileLayout->addWidget(m_deleteProfileBtn);
+    profileLayout->addSpacing(12);
+    profileLayout->addWidget(m_darkModeCheck);
+
+    mainLayout->addLayout(profileLayout);
 
     // ==========================================
     // 1. Connection Details Group
@@ -330,8 +376,279 @@ void MainWindow::updateTrayStatus(const QString &status)
         return;
     }
 
-    m_trayStatusAction->setText(tr("Connection: %1").arg(status));
-    m_trayIcon->setToolTip(tr("rdpqt - %1").arg(status));
+    const QString displayStatus = m_currentProfileName.isEmpty()
+        ? status
+        : QString("%1 (%2)").arg(status, m_currentProfileName);
+
+    m_trayStatusAction->setText(tr("Connection: %1").arg(displayStatus));
+    m_trayIcon->setToolTip(tr("rdpqt - %1").arg(displayStatus));
+}
+
+void MainWindow::onProfileIndexChanged(int index)
+{
+    if (index < 0 || m_isUpdatingProfileList) {
+        return;
+    }
+
+    const QString newProfile = m_profileCombo->itemText(index);
+    if (newProfile.isEmpty()) {
+        return;
+    }
+
+    // Auto-save the previous profile before switching
+    if (!m_currentProfileName.isEmpty() && m_currentProfileName != newProfile) {
+        saveProfile(m_currentProfileName);
+    }
+
+    m_currentProfileName = newProfile;
+    loadProfile(m_currentProfileName);
+
+    QSettings settings("FreeRDPClient", "RdpQt");
+    settings.setValue("currentProfile", m_currentProfileName);
+}
+
+void MainWindow::onNewProfileClicked()
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this,
+        tr("New Profile"),
+        tr("Enter profile name:"),
+        QLineEdit::Normal,
+        QString(),
+        &ok
+    ).trimmed();
+
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+
+    if (m_profileCombo->findText(name) != -1) {
+        QMessageBox::warning(this, tr("Profile Exists"), tr("A profile named '%1' already exists.").arg(name));
+        return;
+    }
+
+    // Save previous active profile first
+    if (!m_currentProfileName.isEmpty()) {
+        saveProfile(m_currentProfileName);
+    }
+
+    // Save the new profile with current UI values
+    m_currentProfileName = name;
+    saveProfile(name);
+
+    updateProfileList(name);
+    setStatus(tr("Status: Profile '%1' created").arg(name), StatusTone::Success);
+}
+
+void MainWindow::onSaveProfileClicked()
+{
+    if (m_currentProfileName.isEmpty()) {
+        return;
+    }
+
+    saveProfile(m_currentProfileName);
+    setStatus(tr("Status: Profile '%1' saved").arg(m_currentProfileName), StatusTone::Info);
+}
+
+void MainWindow::onRenameProfileClicked()
+{
+    if (m_currentProfileName.isEmpty()) {
+        return;
+    }
+
+    bool ok = false;
+    const QString newName = QInputDialog::getText(
+        this,
+        tr("Rename Profile"),
+        tr("Enter new name for profile '%1':").arg(m_currentProfileName),
+        QLineEdit::Normal,
+        m_currentProfileName,
+        &ok
+    ).trimmed();
+
+    if (!ok || newName.isEmpty() || newName == m_currentProfileName) {
+        return;
+    }
+
+    if (m_profileCombo->findText(newName) != -1) {
+        QMessageBox::warning(this, tr("Profile Exists"), tr("A profile named '%1' already exists.").arg(newName));
+        return;
+    }
+
+    // Save current settings first
+    saveProfile(m_currentProfileName);
+
+    // Copy keys from old profile group to new group
+    QSettings settings("FreeRDPClient", "RdpQt");
+    settings.beginGroup("Profiles");
+    settings.beginGroup(m_currentProfileName);
+    const QStringList keys = settings.allKeys();
+    QMap<QString, QVariant> values;
+    for (const QString &k : keys) {
+        values[k] = settings.value(k);
+    }
+    settings.endGroup();
+
+    // Remove old profile
+    settings.remove(m_currentProfileName);
+
+    // Save under new name
+    settings.beginGroup(newName);
+    for (auto it = values.cbegin(); it != values.cend(); ++it) {
+        settings.setValue(it.key(), it.value());
+    }
+    settings.endGroup();
+    settings.endGroup();
+
+    m_currentProfileName = newName;
+    settings.setValue("currentProfile", m_currentProfileName);
+
+    updateProfileList(m_currentProfileName);
+    setStatus(tr("Status: Profile renamed to '%1'").arg(newName), StatusTone::Info);
+}
+
+void MainWindow::onDeleteProfileClicked()
+{
+    if (m_currentProfileName.isEmpty()) {
+        return;
+    }
+
+    const QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        tr("Delete Profile"),
+        tr("Are you sure you want to delete profile '%1'?").arg(m_currentProfileName),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    deleteProfile(m_currentProfileName);
+
+    // Check remaining profiles
+    QSettings settings("FreeRDPClient", "RdpQt");
+    settings.beginGroup("Profiles");
+    const QStringList remaining = settings.childGroups();
+    settings.endGroup();
+
+    if (remaining.isEmpty()) {
+        const QString defaultName = tr("Default");
+        saveProfile(defaultName);
+        m_currentProfileName = defaultName;
+    } else {
+        m_currentProfileName = remaining.first();
+    }
+
+    settings.setValue("currentProfile", m_currentProfileName);
+    updateProfileList(m_currentProfileName);
+    loadProfile(m_currentProfileName);
+    setStatus(tr("Status: Profile deleted"), StatusTone::Neutral);
+}
+
+void MainWindow::updateProfileList(const QString &selectedProfile)
+{
+    m_isUpdatingProfileList = true;
+    m_profileCombo->clear();
+
+    QSettings settings("FreeRDPClient", "RdpQt");
+    settings.beginGroup("Profiles");
+    const QStringList profiles = settings.childGroups();
+    settings.endGroup();
+
+    m_profileCombo->addItems(profiles);
+
+    const QString target = selectedProfile.isEmpty() ? m_currentProfileName : selectedProfile;
+    const int idx = m_profileCombo->findText(target);
+    if (idx != -1) {
+        m_profileCombo->setCurrentIndex(idx);
+    } else if (m_profileCombo->count() > 0) {
+        m_profileCombo->setCurrentIndex(0);
+        m_currentProfileName = m_profileCombo->currentText();
+    }
+
+    m_isUpdatingProfileList = false;
+}
+
+void MainWindow::deleteProfile(const QString &name)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+
+    QSettings settings("FreeRDPClient", "RdpQt");
+    settings.beginGroup("Profiles");
+    settings.remove(name);
+    settings.endGroup();
+}
+
+void MainWindow::loadProfile(const QString &name)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+
+    QSettings settings("FreeRDPClient", "RdpQt");
+    settings.beginGroup("Profiles");
+    settings.beginGroup(name);
+
+    m_hostEdit->setText(settings.value("host", "").toString());
+    m_portSpinBox->setValue(settings.value("port", 3389).toInt());
+    m_usernameEdit->setText(settings.value("username", "").toString());
+    m_domainEdit->setText(settings.value("domain", "").toString());
+    m_passwordEdit->clear(); // Clear password on profile switch for security
+
+    const QString res = settings.value("resolution", "1920x1080").toString();
+    const int idx = m_resolutionCombo->findData(res);
+    if (idx != -1) {
+        m_resolutionCombo->setCurrentIndex(idx);
+    } else {
+        m_resolutionCombo->setCurrentText(res);
+    }
+
+    m_clipboardCheck->setChecked(settings.value("clipboard", true).toBool());
+    m_ignoreCertCheck->setChecked(settings.value("ignoreCert", true).toBool());
+
+    const bool shareDrive = settings.value("shareDrive", false).toBool();
+    m_sharedDriveCheck->setChecked(shareDrive);
+    m_sharedDrivePathEdit->setText(settings.value("sharedDrivePath", "").toString());
+    onSharedDriveToggled(shareDrive);
+
+    settings.endGroup();
+    settings.endGroup();
+}
+
+void MainWindow::saveProfile(const QString &name)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+
+    QSettings settings("FreeRDPClient", "RdpQt");
+    settings.beginGroup("Profiles");
+    settings.beginGroup(name);
+
+    settings.setValue("host", m_hostEdit->text().trimmed());
+    settings.setValue("port", m_portSpinBox->value());
+    settings.setValue("username", m_usernameEdit->text().trimmed());
+    settings.setValue("domain", m_domainEdit->text().trimmed());
+
+    const QVariant resData = m_resolutionCombo->currentData();
+    if (resData.isValid() && !resData.toString().isEmpty()) {
+        settings.setValue("resolution", resData.toString());
+    } else {
+        settings.setValue("resolution", m_resolutionCombo->currentText().trimmed());
+    }
+
+    settings.setValue("clipboard", m_clipboardCheck->isChecked());
+    settings.setValue("ignoreCert", m_ignoreCertCheck->isChecked());
+    settings.setValue("shareDrive", m_sharedDriveCheck->isChecked());
+    settings.setValue("sharedDrivePath", m_sharedDrivePathEdit->text().trimmed());
+
+    settings.endGroup();
+    settings.endGroup();
 }
 
 void MainWindow::onSharedDriveToggled(bool checked)
@@ -498,6 +815,12 @@ void MainWindow::onStateChanged(bool running)
     m_disconnectBtn->setVisible(running);
     m_disconnectBtn->setEnabled(running);
 
+    m_profileCombo->setEnabled(!running);
+    m_newProfileBtn->setEnabled(!running);
+    m_saveProfileBtn->setEnabled(!running);
+    m_renameProfileBtn->setEnabled(!running);
+    m_deleteProfileBtn->setEnabled(!running);
+
     m_hostEdit->setEnabled(!running);
     m_portSpinBox->setEnabled(!running);
     m_usernameEdit->setEnabled(!running);
@@ -559,46 +882,58 @@ void MainWindow::loadSettings()
 {
     QSettings settings("FreeRDPClient", "RdpQt");
     m_darkModeCheck->setChecked(settings.value("darkMode", false).toBool());
-    m_hostEdit->setText(settings.value("host", "").toString());
-    m_portSpinBox->setValue(settings.value("port", 3389).toInt());
-    m_usernameEdit->setText(settings.value("username", "").toString());
-    m_domainEdit->setText(settings.value("domain", "").toString());
 
-    const QString res = settings.value("resolution", "1920x1080").toString();
-    const int idx = m_resolutionCombo->findData(res);
-    if (idx != -1) {
-        m_resolutionCombo->setCurrentIndex(idx);
-    } else {
-        m_resolutionCombo->setCurrentText(res);
+    settings.beginGroup("Profiles");
+    QStringList profiles = settings.childGroups();
+    settings.endGroup();
+
+    if (profiles.isEmpty()) {
+        // Migration of legacy single connection or brand new setup
+        const QString defaultName = tr("Default");
+        const QString legacyHost = settings.value("host", "").toString();
+        const int legacyPort = settings.value("port", 3389).toInt();
+        const QString legacyUser = settings.value("username", "").toString();
+        const QString legacyDomain = settings.value("domain", "").toString();
+        const QString legacyRes = settings.value("resolution", "1920x1080").toString();
+        const bool legacyClipboard = settings.value("clipboard", true).toBool();
+        const bool legacyCert = settings.value("ignoreCert", true).toBool();
+        const bool legacyShareDrive = settings.value("shareDrive", false).toBool();
+        const QString legacyDrivePath = settings.value("sharedDrivePath", "").toString();
+
+        settings.beginGroup("Profiles");
+        settings.beginGroup(defaultName);
+        settings.setValue("host", legacyHost);
+        settings.setValue("port", legacyPort);
+        settings.setValue("username", legacyUser);
+        settings.setValue("domain", legacyDomain);
+        settings.setValue("resolution", legacyRes);
+        settings.setValue("clipboard", legacyClipboard);
+        settings.setValue("ignoreCert", legacyCert);
+        settings.setValue("shareDrive", legacyShareDrive);
+        settings.setValue("sharedDrivePath", legacyDrivePath);
+        settings.endGroup();
+        settings.endGroup();
+
+        profiles << defaultName;
     }
 
-    m_clipboardCheck->setChecked(settings.value("clipboard", true).toBool());
-    m_ignoreCertCheck->setChecked(settings.value("ignoreCert", true).toBool());
+    QString currentProfile = settings.value("currentProfile", "").toString();
+    if (currentProfile.isEmpty() || !profiles.contains(currentProfile)) {
+        currentProfile = profiles.first();
+    }
 
-    const bool shareDrive = settings.value("shareDrive", false).toBool();
-    m_sharedDriveCheck->setChecked(shareDrive);
-    m_sharedDrivePathEdit->setText(settings.value("sharedDrivePath", "").toString());
-    onSharedDriveToggled(shareDrive);
+    m_currentProfileName = currentProfile;
+    updateProfileList(m_currentProfileName);
+    loadProfile(m_currentProfileName);
 }
 
 void MainWindow::saveSettings()
 {
     QSettings settings("FreeRDPClient", "RdpQt");
-    settings.setValue("host", m_hostEdit->text().trimmed());
     settings.setValue("darkMode", m_darkModeCheck->isChecked());
-    settings.setValue("port", m_portSpinBox->value());
-    settings.setValue("username", m_usernameEdit->text().trimmed());
-    settings.setValue("domain", m_domainEdit->text().trimmed());
+    settings.setValue("currentProfile", m_currentProfileName);
 
-    const QVariant resData = m_resolutionCombo->currentData();
-    if (resData.isValid() && !resData.toString().isEmpty()) {
-        settings.setValue("resolution", resData.toString());
-    } else {
-        settings.setValue("resolution", m_resolutionCombo->currentText().trimmed());
+    if (!m_currentProfileName.isEmpty()) {
+        saveProfile(m_currentProfileName);
     }
-
-    settings.setValue("clipboard", m_clipboardCheck->isChecked());
-    settings.setValue("ignoreCert", m_ignoreCertCheck->isChecked());
-    settings.setValue("shareDrive", m_sharedDriveCheck->isChecked());
-    settings.setValue("sharedDrivePath", m_sharedDrivePathEdit->text().trimmed());
 }
